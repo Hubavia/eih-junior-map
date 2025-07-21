@@ -279,6 +279,37 @@
             border-radius: 50%;
         }
         
+        .autocomplete-dropdown {
+            position: absolute;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+            z-index: 1001;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .autocomplete-item {
+            padding: 10px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .autocomplete-item:hover {
+            background: #f0f0f0;
+        }
+        
+        .stats {
+            background: #e8f1ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 13px;
+            color: #003d7a;
+            border: 1px solid #b3d1ff;
+        }
         .custom-marker {
             transition: transform 0.2s;
         }
@@ -301,16 +332,6 @@
             font-size: 14px;
             font-weight: 600;
             box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-        }
-        
-        .stats {
-            background: #e8f1ff;
-            padding: 10px;
-            border-radius: 5px;
-            margin-top: 10px;
-            font-size: 13px;
-            color: #003d7a;
-            border: 1px solid #b3d1ff;
         }
     </style>
 </head>
@@ -351,15 +372,15 @@
         
         <div class="info-panel">
             <div class="info-content">
-                <h3>Welcome to EIH Junior Ice Hockey League Explorer</h3>
-                <p>Showing all <strong>30 ice rink venues</strong> hosting <strong>191 teams</strong> across the UK.</p>
-                <p>Select an age group and division above to explore the league structure, or click on any venue marker to see details.</p>
+                <h3>Welcome!</h3>
+                <p>Select an age group and division to explore the UK Junior Ice Hockey structure.</p>
+                <p>Click on any team marker on the map to see detailed information.</p>
                 <div class="stats">
-                    <strong>Unique Venues:</strong> 30<br>
-                    <strong>Total Teams:</strong> 191<br>
+                    <strong>Mapped Locations:</strong> 67 team entries<br>
+                    <strong>Unique Venues:</strong> 30 ice rinks<br>
                     <strong>Age Groups:</strong> 5 (U10 to U19)<br>
                     <strong>Total Divisions:</strong> 25<br>
-                    <strong>Note:</strong> Venues may host multiple teams across different age groups
+                    <strong>Note:</strong> Many venues host multiple teams
                 </div>
             </div>
         </div>
@@ -644,4 +665,822 @@
                         note: "Top 8 advance to playoffs: QF (1v8, 2v7, 3v6, 4v5), SF, Final"
                     },
                     "U19N1": {
-                        teams
+                        teams: ["Kingston", "Whitley", "Widnes", "Manchester", "Bradford", "Solihull 1", "Leeds 2", "Nottingham 2"],
+                        type: "north",
+                        games: "20 games"
+                    },
+                    "U19S2": {
+                        teams: ["Romford", "Solent", "Invicta 2", "Bristol", "MK Storm 2"],
+                        type: "south",
+                        games: "16 games (2 home/2 away)"
+                    },
+                    "U19N2": {
+                        teams: ["Coventry", "Widnes 2", "Deeside", "Sheffield 2", "Sutton", "Solihull 2", "Billingham"],
+                        type: "north",
+                        games: "18 games (3 games vs each)"
+                    },
+                    "U19S1": {
+                        teams: ["Cardiff", "Invicta", "Streatham", "Oxford", "Haringey 2", "MK Storm", "Swindon 2"],
+                        type: "south",
+                        games: "18 games (3 games vs each)"
+                    }
+                }
+            }
+        };
+
+        // Global variables
+        let map = null;
+        let markers = [];
+        let currentMarkers = [];
+        
+        // Group teams by venue
+        function getVenueGroups() {
+            const venues = {};
+            
+            Object.entries(hockeyData.clubs).forEach(([teamName, location]) => {
+                // Create a venue key based on city
+                const venueKey = location.city;
+                
+                if (!venues[venueKey]) {
+                    venues[venueKey] = {
+                        location: location,
+                        teams: [],
+                        primaryTeam: null
+                    };
+                }
+                
+                venues[venueKey].teams.push(teamName);
+                
+                // Set primary team (base name without numbers)
+                if (!venues[venueKey].primaryTeam || 
+                    teamName.length < venues[venueKey].primaryTeam.length ||
+                    !teamName.match(/\d/)) {
+                    venues[venueKey].primaryTeam = teamName;
+                }
+            });
+            
+            return venues;
+        }
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🏒 EIH Junior Ice Hockey League - Starting...');
+            console.log('✅ Data loaded -', Object.keys(hockeyData.clubs).length, 'clubs,', Object.keys(hockeyData.divisions).length, 'age groups');
+            
+            // Initialize the application
+            initializeApp();
+        });
+
+        function initializeApp() {
+            console.log('🚀 Starting application...');
+            
+            // Initialize map
+            initializeMap();
+            
+            // Set up event listeners
+            setupEventListeners();
+            
+            // Show all venues initially
+            if (map) {
+                showAllVenues();
+            }
+            
+            console.log('✅ Application ready!');
+        }
+
+        function initializeMap() {
+            console.log('🗺️ Initializing map...');
+            
+            try {
+                // Create map centered on UK
+                map = L.map('map').setView([53.5, -2.0], 6);
+                
+                // Add tile layer
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 19
+                }).addTo(map);
+                
+                console.log('✅ Map ready!');
+                
+            } catch (error) {
+                console.error('❌ Map loading failed:', error);
+                document.getElementById('map').innerHTML = `
+                    <div class="map-error">
+                        <h3>⚠️ Map Loading Error</h3>
+                        <p>The map couldn't load, but you can still use all the controls to explore divisions!</p>
+                    </div>
+                `;
+            }
+        }
+
+        function setupEventListeners() {
+            // Age group change
+            document.getElementById('ageGroup').addEventListener('change', function(e) {
+                const ageGroup = e.target.value;
+                console.log('Age group selected:', ageGroup);
+                
+                // Update divisions dropdown
+                updateDivisions(ageGroup);
+                
+                // Reset division selection
+                document.getElementById('division').value = '';
+                
+                // Update info panel
+                if (ageGroup) {
+                    showAgeGroupInfo(ageGroup);
+                    // Show venues for this age group on the map
+                    showAgeGroupVenues(ageGroup);
+                } else {
+                    // If no age group selected, show all venues
+                    showAllVenues();
+                }
+            });
+            
+            // Division change - automatically show on map
+            document.getElementById('division').addEventListener('change', function(e) {
+                const division = e.target.value;
+                const ageGroup = document.getElementById('ageGroup').value;
+                
+                if (division && ageGroup) {
+                    // Automatically show division on map
+                    showDivisionOnMap(ageGroup, division);
+                    showDivisionInfo(ageGroup, division);
+                } else if (ageGroup && !division) {
+                    // If division cleared but age group still selected, show age group overview
+                    showAgeGroupInfo(ageGroup);
+                    showAgeGroupVenues(ageGroup);
+                }
+            });
+            
+            // Reset view button - does everything
+            document.getElementById('resetView').addEventListener('click', function() {
+                // Reset all controls
+                document.getElementById('ageGroup').value = '';
+                document.getElementById('division').value = '';
+                document.getElementById('division').disabled = true;
+                
+                // Show all venues
+                showAllVenues();
+                
+                // Reset info panel to welcome message
+                document.querySelector('.info-content').innerHTML = `
+                    <h3>Welcome!</h3>
+                    <p>Select an age group and division to explore the EIH Junior Ice Hockey League structure.</p>
+                    <p>Click on any venue marker on the map to see detailed information.</p>
+                    <div class="stats">
+                        <strong>Mapped Locations:</strong> 67 team entries<br>
+                        <strong>Unique Venues:</strong> 30 ice rinks<br>
+                        <strong>Age Groups:</strong> 5 (U10 to U19)<br>
+                        <strong>Total Divisions:</strong> 25<br>
+                        <strong>Note:</strong> Many venues host multiple teams
+                    </div>
+                                    `;
+            });
+        }
+
+        function updateDivisions(ageGroup) {
+            const divisionSelect = document.getElementById('division');
+            
+            // Clear current options
+            divisionSelect.innerHTML = '<option value="">Select Division</option>';
+            
+            if (ageGroup && hockeyData.divisions[ageGroup]) {
+                // Enable the division selector
+                divisionSelect.disabled = false;
+                
+                // Get all divisions and sort them (North first, then South)
+                const divisions = hockeyData.divisions[ageGroup];
+                const divisionEntries = Object.entries(divisions);
+                
+                // Sort divisions: North/National first, then South
+                divisionEntries.sort((a, b) => {
+                    const aType = a[1].type;
+                    const bType = b[1].type;
+                    
+                    // Priority: north/national first, then south
+                    if (aType === 'north' && bType === 'south') return -1;
+                    if (aType === 'south' && bType === 'north') return 1;
+                    if (aType === 'national' && bType !== 'national') return -1;
+                    if (aType !== 'national' && bType === 'national') return 1;
+                    
+                    // Within same type, sort alphabetically
+                    return a[0].localeCompare(b[0]);
+                });
+                
+                // Add sorted divisions to dropdown
+                divisionEntries.forEach(([division, data]) => {
+                    const option = document.createElement('option');
+                    option.value = division;
+                    option.textContent = division;
+                    divisionSelect.appendChild(option);
+                });
+            } else {
+                divisionSelect.disabled = true;
+            }
+        }
+
+        function showAllVenues() {
+            console.log('Showing all venues...');
+            
+            if (!map) return;
+            
+            // Clear existing markers
+            clearMarkers();
+            
+            // Get venue groups with division information
+            const venues = getVenueGroupsWithDivisions();
+            
+            // Add one marker per venue with color coding
+            Object.entries(venues).forEach(([venueKey, venueData]) => {
+                const { location, uniqueTeamNames, primaryTeam, totalTeams, ageGroups, type, hasNational } = venueData;
+                
+                // Create label showing actual team count
+                const label = `${primaryTeam} (${totalTeams} teams, ${ageGroups.size} age groups)`;
+                
+                // Determine color based on venue type
+                const color = type === 'north' ? '#003d7a' : '#e74333';
+                
+                const marker = L.marker([location.lat, location.lng], {
+                    icon: createIcon(color, hasNational),
+                    title: label  // Hover tooltip
+                }).addTo(map);
+                
+                // Create popup content
+                const popupContent = `
+                    <div style="font-family: Arial, sans-serif;">
+                        <h4 style="margin: 0 0 5px 0; color: #003d7a;">${location.city}</h4>
+                        <p style="margin: 0 0 5px 0; font-size: 13px; color: #555;">
+                            <strong>${totalTeams} teams in ${venueData.divisions.length} divisions across ${ageGroups.size} age groups</strong>
+                        </p>
+                        <p style="margin: 0 0 3px 0; font-size: 12px; color: #666;">
+                            Division: <strong>${type.charAt(0).toUpperCase() + type.slice(1)}</strong>
+                            ${hasNational ? ' + National' : ''}
+                        </p>
+                        <p style="margin: 0; font-size: 12px; color: #666;">Age groups: ${Array.from(ageGroups).join(', ')}</p>
+                    </div>`;
+                
+                marker.bindPopup(popupContent);
+                marker.on('click', () => showVenueInfo(venueKey, venueData));
+                
+                currentMarkers.push(marker);
+            });
+            
+            // Fit map to show all markers
+            if (currentMarkers.length > 0) {
+                const group = new L.featureGroup(currentMarkers);
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+            
+            // Count total teams across all divisions
+            let totalTeamCount = 0;
+            Object.values(venues).forEach(v => {
+                totalTeamCount += v.divisions.length; // Each division entry is a separate team
+            });
+            
+            const uniqueVenues = Object.keys(venues).length;
+            
+            document.querySelector('.info-content').innerHTML = `
+                <h3>Welcome to EIH Junior Ice Hockey League Explorer</h3>
+                <p>Showing all <strong>30 ice rink venues</strong> hosting <strong>191 teams</strong> across the UK.</p>
+                <p>Select an age group and division above to explore the league structure, or click on any venue marker to see details.</p>
+                <div class="stats">
+                    <strong>Unique Venues:</strong> ${uniqueVenues}<br>
+                    <strong>Total Teams:</strong> 191<br>
+                    <strong>Age Groups:</strong> 5 (U10 to U19)<br>
+                    <strong>Total Divisions:</strong> 25<br>
+                    <strong>Note:</strong> Venues may host multiple teams across different age groups
+                </div>
+            `;
+        }
+        
+        // Enhanced venue grouping with division type analysis
+        function getVenueGroupsWithDivisions() {
+            const venues = {};
+            
+            // Define which venues are North vs South based on the data
+            const northVenues = new Set(['Leeds', 'Sheffield', 'Nottingham', 'Manchester', 'Billingham', 
+                'Kingston upon Hull', 'Whitley Bay', 'Bradford', 'Solihull', 'Coventry', 'Widnes', 
+                'Deeside', 'Telford', 'Blackburn, Lancashire', 'Sutton', 'Manchester (Altrincham)']);
+            
+            const nationalDivisionTeams = ["Nottingham", "Leeds", "Sheffield", "Telford", "Peterborough", 
+                "Haringey 1", "Swindon 1", "Slough 1", "Chelmsford", "Guildford"];
+            
+            Object.entries(hockeyData.clubs).forEach(([teamName, location]) => {
+                const venueKey = location.city;
+                
+                if (!venues[venueKey]) {
+                    venues[venueKey] = {
+                        location: location,
+                        uniqueTeamNames: new Set(),
+                        primaryTeam: null,
+                        totalTeams: 0,
+                        ageGroups: new Set(),
+                        divisions: [],
+                        type: northVenues.has(venueKey) ? 'north' : 'south',
+                        hasNational: false
+                    };
+                }
+                
+                venues[venueKey].uniqueTeamNames.add(teamName);
+                
+                // Check if this team plays in national division
+                if (nationalDivisionTeams.some(natTeam => teamName.startsWith(natTeam.split(' ')[0]))) {
+                    venues[venueKey].hasNational = true;
+                }
+                
+                // Set primary team
+                if (!venues[venueKey].primaryTeam || 
+                    teamName.length < venues[venueKey].primaryTeam.length ||
+                    !teamName.match(/\d/)) {
+                    venues[venueKey].primaryTeam = teamName;
+                }
+            });
+            
+            // Count actual teams (each division entry is a separate team)
+            Object.entries(venues).forEach(([venueKey, venueData]) => {
+                venueData.uniqueTeamNames.forEach(teamName => {
+                    Object.entries(hockeyData.divisions).forEach(([ageGroup, divisions]) => {
+                        Object.entries(divisions).forEach(([divName, div]) => {
+                            if (div.teams.includes(teamName)) {
+                                venueData.ageGroups.add(ageGroup);
+                                venueData.divisions.push({
+                                    teamName: teamName,
+                                    ageGroup: ageGroup,
+                                    division: divName
+                                });
+                                venueData.totalTeams++; // Each occurrence is a separate team
+                            }
+                        });
+                    });
+                });
+            });
+            
+            return venues;
+        }
+
+        function showDivisionOnMap(ageGroup, divisionName) {
+            if (!map) return;
+            
+            const division = hockeyData.divisions[ageGroup][divisionName];
+            if (!division) return;
+            
+            // Clear ALL existing markers first
+            clearMarkers();
+            
+            // For division view, show individual teams
+            division.teams.forEach(teamName => {
+                const location = hockeyData.clubs[teamName];
+                if (location) {
+                    const color = division.type === 'north' ? '#003d7a' : 
+                                 division.type === 'south' ? '#e74333' : '#FFD700';
+                    
+                    const marker = L.marker([location.lat, location.lng], {
+                        icon: createIcon(color),
+                        title: teamName  // Show individual team name
+                    }).addTo(map);
+                    
+                    marker.bindPopup(createPopupContent(teamName, location, divisionName));
+                    marker.on('click', () => showTeamInfo(teamName));
+                    
+                    currentMarkers.push(marker);
+                }
+            });
+            
+            // Fit map to show all markers in division
+            if (currentMarkers.length > 0) {
+                const group = new L.featureGroup(currentMarkers);
+                map.fitBounds(group.getBounds().pad(0.15));
+            }
+        }
+        
+        // Keep the original showTeamInfo for division view
+        function showTeamInfo(teamName) {
+            const location = hockeyData.clubs[teamName];
+            const teamDivisions = [];
+            
+            // Find all divisions this team plays in
+            Object.entries(hockeyData.divisions).forEach(([ageGroup, divisions]) => {
+                Object.entries(divisions).forEach(([divName, div]) => {
+                    if (div.teams.includes(teamName)) {
+                        teamDivisions.push({
+                            ageGroup: ageGroup,
+                            division: divName,
+                            type: div.type
+                        });
+                    }
+                });
+            });
+            
+            const infoContent = document.querySelector('.info-content');
+            infoContent.innerHTML = `
+                <h3>${teamName}</h3>
+                <p><strong>Location:</strong> ${location.city}</p>
+                <p><strong>Coordinates:</strong> ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}</p>
+                <p><strong>Plays in ${teamDivisions.length} division(s):</strong></p>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">Click a division below to view it on the map:</p>
+                <div class="team-list">
+                    ${teamDivisions.map(td => `
+                        <div class="team-item clickable" 
+                             data-agegroup="${td.ageGroup}" 
+                             data-division="${td.division}"
+                             onclick="selectDivisionFromTeamInfo('${td.ageGroup}', '${td.division}')">
+                            <div class="dot ${td.type}"></div>
+                            <span>${td.ageGroup} - ${td.division}</span>
+                            <span style="margin-left: auto; color: #3498db;">→</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function clearMarkers() {
+            currentMarkers.forEach(marker => {
+                map.removeLayer(marker);
+            });
+            currentMarkers = [];
+        }
+
+        function createIcon(color, hasNational = false) {
+            const baseIcon = `<div style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`;
+            
+            if (hasNational) {
+                // Add yellow ring for national division venues
+                return L.divIcon({
+                    html: `<div style="position: relative; width: 28px; height: 28px;">
+                        <div style="position: absolute; top: 0; left: 0; width: 28px; height: 28px; border-radius: 50%; background-color: #FFD700; opacity: 0.8;"></div>
+                        <div style="position: absolute; top: 4px; left: 4px; background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>
+                    </div>`,
+                    className: 'custom-marker',
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                });
+            }
+            
+            return L.divIcon({
+                html: baseIcon,
+                className: 'custom-marker',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            });
+        }
+
+        function createPopupContent(teamName, location, division) {
+            return `
+                <div style="font-family: Arial, sans-serif;">
+                    <h4 style="margin: 0 0 5px 0; color: #2c3e50;">${teamName}</h4>
+                    <p style="margin: 0; font-size: 13px; color: #555;">
+                        <strong>Location:</strong> ${location.city}<br>
+                        ${division ? `<strong>Division:</strong> ${division}` : ''}
+                    </p>
+                </div>
+            `;
+        }
+
+        function showAgeGroupVenues(ageGroup) {
+            if (!map) return;
+            
+            // Clear existing markers
+            clearMarkers();
+            
+            // Get all venues that have teams in this age group
+            const venues = getVenueGroupsWithDivisions();
+            const ageGroupVenues = {};
+            
+            // Filter venues that have teams in the selected age group
+            Object.entries(venues).forEach(([venueKey, venueData]) => {
+                if (venueData.ageGroups.has(ageGroup)) {
+                    ageGroupVenues[venueKey] = venueData;
+                }
+            });
+            
+            // Add markers for venues in this age group
+            Object.entries(ageGroupVenues).forEach(([venueKey, venueData]) => {
+                const { location, type, hasNational } = venueData;
+                
+                // Count teams for this specific age group
+                const ageGroupTeams = venueData.divisions.filter(d => d.ageGroup === ageGroup);
+                const teamCount = ageGroupTeams.length;
+                
+                const label = `${venueData.primaryTeam} (${teamCount} ${ageGroup} team${teamCount > 1 ? 's' : ''})`;
+                
+                // Determine color based on venue type
+                const color = type === 'north' ? '#003d7a' : '#e74333';
+                
+                const marker = L.marker([location.lat, location.lng], {
+                    icon: createIcon(color, hasNational && ageGroup === 'U19'),
+                    title: label
+                }).addTo(map);
+                
+                // Create popup content specific to this age group
+                const popupContent = `
+                    <div style="font-family: Arial, sans-serif;">
+                        <h4 style="margin: 0 0 5px 0; color: #003d7a;">${location.city}</h4>
+                        <p style="margin: 0 0 5px 0; font-size: 13px; color: #555;">
+                            <strong>${teamCount} ${ageGroup} team${teamCount > 1 ? 's' : ''}</strong>
+                        </p>
+                        <p style="margin: 0; font-size: 12px; color: #666;">
+                            Division: <strong>${type.charAt(0).toUpperCase() + type.slice(1)}</strong>
+                            ${hasNational && ageGroup === 'U19' ? ' + National' : ''}
+                        </p>
+                    </div>`;
+                
+                marker.bindPopup(popupContent);
+                marker.on('click', () => showVenueInfo(venueKey, venueData));
+                
+                currentMarkers.push(marker);
+            });
+            
+            // Fit map to show all markers
+            if (currentMarkers.length > 0) {
+                const group = new L.featureGroup(currentMarkers);
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+        }
+        
+        function showAgeGroupInfo(ageGroup) {
+            const divisions = hockeyData.divisions[ageGroup];
+            const divisionCount = Object.keys(divisions).length;
+            let teamCount = 0;
+            
+            Object.values(divisions).forEach(div => {
+                teamCount += div.teams.length;
+            });
+            
+            // Sort divisions: North/National first, then South
+            const divisionEntries = Object.entries(divisions);
+            divisionEntries.sort((a, b) => {
+                const aType = a[1].type;
+                const bType = b[1].type;
+                
+                if (aType === 'north' && bType === 'south') return -1;
+                if (aType === 'south' && bType === 'north') return 1;
+                if (aType === 'national' && bType !== 'national') return -1;
+                if (aType !== 'national' && bType === 'national') return 1;
+                
+                return a[0].localeCompare(b[0]);
+            });
+            
+            const infoContent = document.querySelector('.info-content');
+            infoContent.innerHTML = `
+                <h3>${ageGroup} Overview</h3>
+                <p><strong>Divisions:</strong> ${divisionCount}</p>
+                <p><strong>Total Teams:</strong> ${teamCount}</p>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">Click a division below to view it:</p>
+                <div class="team-list">
+                    ${divisionEntries.map(([name, div]) => `
+                        <div class="team-item clickable" 
+                             onclick="selectDivisionFromOverview('${ageGroup}', '${name}')">
+                            <div class="dot ${div.type}"></div>
+                            <span>${name} (${div.teams.length} teams)</span>
+                            <span style="margin-left: auto; color: #3498db;">→</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        function selectDivisionFromOverview(ageGroup, division) {
+            // Update the division dropdown
+            document.getElementById('division').value = division;
+            
+            // Show the division on map (same as when selecting from dropdown)
+            showDivisionOnMap(ageGroup, division);
+            
+            // Update info panel to show division info
+            showDivisionInfo(ageGroup, division);
+        }
+
+        function showDivisionInfo(ageGroup, divisionName) {
+            const division = hockeyData.divisions[ageGroup][divisionName];
+            if (!division) return;
+            
+            const infoContent = document.querySelector('.info-content');
+            infoContent.innerHTML = `
+                <h3>${divisionName}</h3>
+                <p><strong>Age Group:</strong> ${ageGroup}</p>
+                <p><strong>Type:</strong> ${division.type.charAt(0).toUpperCase() + division.type.slice(1)} Division</p>
+                ${division.games ? `<p><strong>Format:</strong> ${division.games}</p>` : ''}
+                ${division.note ? `<p><strong>Note:</strong> ${division.note}</p>` : ''}
+                <p><strong>Teams (${division.teams.length}):</strong></p>
+                <div class="team-list">
+                    ${division.teams.map(team => {
+                        const location = hockeyData.clubs[team];
+                        return `
+                            <div class="team-item" 
+                                 onmouseenter="highlightMarker('${team}')"
+                                 onmouseleave="unhighlightMarker('${team}')">
+                                <div class="dot ${division.type}"></div>
+                                <span><strong>${team}</strong> - ${location ? location.city : 'Location not found'}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        function showVenueInfo(venueKey, venueData) {
+            const { location, divisions, totalTeams, ageGroups } = venueData;
+            
+            // Group divisions by age group and team name
+            const teamsByAgeGroup = {};
+            divisions.forEach(d => {
+                if (!teamsByAgeGroup[d.ageGroup]) {
+                    teamsByAgeGroup[d.ageGroup] = {};
+                }
+                if (!teamsByAgeGroup[d.ageGroup][d.teamName]) {
+                    teamsByAgeGroup[d.ageGroup][d.teamName] = [];
+                }
+                teamsByAgeGroup[d.ageGroup][d.teamName].push(d);
+            });
+            
+            const infoContent = document.querySelector('.info-content');
+            infoContent.innerHTML = `
+                <h3>${location.city}</h3>
+                <p><strong>Total Teams:</strong> ${totalTeams} (across all age groups)</p>
+                <p><strong>Coordinates:</strong> ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}</p>
+                
+                ${Object.entries(teamsByAgeGroup).map(([ageGroup, teams]) => `
+                    <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <p style="margin: 0 0 8px 0; font-weight: 600; color: #003d7a;">${ageGroup}</p>
+                        <div class="team-list">
+                            ${Object.entries(teams).map(([teamName, divs]) => 
+                                divs.map(d => `
+                                    <div class="team-item clickable" 
+                                         onclick="selectDivisionFromTeamInfo('${d.ageGroup}', '${d.division}')">
+                                        <div class="dot ${hockeyData.divisions[d.ageGroup][d.division].type}"></div>
+                                        <span><strong>${teamName}</strong> - ${d.division}</span>
+                                        <span style="margin-left: auto; color: #003d7a;">→</span>
+                                    </div>
+                                `).join('')
+                            ).join('')}
+                        </div>
+                    </div>
+                `).join('')}
+            `;
+        }
+        
+        function selectDivisionFromTeamInfo(ageGroup, division) {
+            // Update the dropdowns
+            document.getElementById('ageGroup').value = ageGroup;
+            updateDivisions(ageGroup);
+            
+            // Small delay to ensure division dropdown is populated
+            setTimeout(() => {
+                document.getElementById('division').value = division;
+                document.getElementById('showDivision').disabled = false;
+                
+                // Show the division on map
+                showDivisionOnMap(ageGroup, division);
+                
+                // Update info panel to show division info
+                showDivisionInfo(ageGroup, division);
+            }, 50);
+        }
+
+        function showAutocomplete(searchTerm, ageGroup) {
+            const dropdown = document.getElementById('autocompleteDropdown');
+            const teamSearch = document.getElementById('teamSearch');
+            
+            // Get teams that match the search term
+            const matchingTeams = [];
+            const divisions = hockeyData.divisions[ageGroup];
+            
+            Object.entries(divisions).forEach(([divName, div]) => {
+                div.teams.forEach(team => {
+                    if (team.toLowerCase().includes(searchTerm) && !matchingTeams.find(t => t.name === team)) {
+                        matchingTeams.push({
+                            name: team,
+                            division: divName
+                        });
+                    }
+                });
+            });
+            
+            if (matchingTeams.length > 0) {
+                dropdown.innerHTML = matchingTeams.map(team => `
+                    <div class="autocomplete-item" data-team="${team.name}" data-division="${team.division}">
+                        ${team.name} <small style="color: #666;">(${team.division})</small>
+                    </div>
+                `).join('');
+                
+                // Position dropdown
+                const rect = teamSearch.getBoundingClientRect();
+                dropdown.style.top = (rect.bottom + window.scrollY) + 'px';
+                dropdown.style.left = rect.left + 'px';
+                dropdown.style.width = rect.width + 'px';
+                dropdown.style.display = 'block';
+                
+                // Add click handlers
+                dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
+                    item.addEventListener('click', function() {
+                        const teamName = this.getAttribute('data-team');
+                        const divisionName = this.getAttribute('data-division');
+                        
+                        teamSearch.value = teamName;
+                        document.getElementById('division').value = divisionName;
+                        document.getElementById('showDivision').disabled = false;
+                        
+                        showDivisionInfo(ageGroup, divisionName);
+                        hideAutocomplete();
+                    });
+                });
+            } else {
+                hideAutocomplete();
+            }
+        }
+
+        function hideAutocomplete() {
+            document.getElementById('autocompleteDropdown').style.display = 'none';
+        }
+        
+        // Marker highlighting functions
+        function highlightMarker(teamName) {
+            if (!map) return;
+            
+            currentMarkers.forEach(marker => {
+                if (marker.options.title === teamName) {
+                    // Scale up the marker
+                    const icon = marker.getIcon();
+                    if (icon && icon.options) {
+                        const currentHtml = icon.options.html;
+                        // Check if it's a national venue (has nested divs)
+                        if (currentHtml.includes('position: relative')) {
+                            // National venue - scale the whole container
+                            const enlargedHtml = currentHtml
+                                .replace('width: 28px; height: 28px;', 'width: 42px; height: 42px;')
+                                .replace('width: 28px; height: 28px;', 'width: 42px; height: 42px;')
+                                .replace('top: 4px; left: 4px;', 'top: 6px; left: 6px;')
+                                .replace('width: 20px; height: 20px;', 'width: 30px; height: 30px;');
+                            
+                            marker.setIcon(L.divIcon({
+                                html: enlargedHtml,
+                                className: 'custom-marker',
+                                iconSize: [42, 42],
+                                iconAnchor: [21, 21]
+                            }));
+                        } else {
+                            // Regular venue
+                            const enlargedHtml = currentHtml
+                                .replace('width: 20px; height: 20px;', 'width: 35px; height: 35px;')
+                                .replace('border: 2px solid white;', 'border: 3px solid white;');
+                            
+                            marker.setIcon(L.divIcon({
+                                html: enlargedHtml,
+                                className: 'custom-marker',
+                                iconSize: [35, 35],
+                                iconAnchor: [17.5, 17.5]
+                            }));
+                        }
+                        marker.setZIndexOffset(1000);
+                    }
+                }
+            });
+        }
+        
+        function unhighlightMarker(teamName) {
+            if (!map) return;
+            
+            currentMarkers.forEach(marker => {
+                if (marker.options.title === teamName) {
+                    // Reset marker to original size
+                    const icon = marker.getIcon();
+                    if (icon && icon.options) {
+                        const currentHtml = icon.options.html;
+                        
+                        // Restore to original size based on type
+                        if (currentHtml.includes('position: relative')) {
+                            // National venue - restore nested structure
+                            const restoredHtml = currentHtml
+                                .replace('width: 42px; height: 42px;', 'width: 28px; height: 28px;')
+                                .replace('width: 42px; height: 42px;', 'width: 28px; height: 28px;')
+                                .replace('top: 6px; left: 6px;', 'top: 4px; left: 4px;')
+                                .replace('width: 30px; height: 30px;', 'width: 20px; height: 20px;');
+                            
+                            marker.setIcon(L.divIcon({
+                                html: restoredHtml,
+                                className: 'custom-marker',
+                                iconSize: [28, 28],
+                                iconAnchor: [14, 14]
+                            }));
+                        } else {
+                            // Regular venue
+                            const restoredHtml = currentHtml
+                                .replace('width: 35px; height: 35px;', 'width: 20px; height: 20px;')
+                                .replace('border: 3px solid white;', 'border: 2px solid white;');
+                            
+                            marker.setIcon(L.divIcon({
+                                html: restoredHtml,
+                                className: 'custom-marker',
+                                iconSize: [20, 20],
+                                iconAnchor: [10, 10]
+                            }));
+                        }
+                        marker.setZIndexOffset(0);
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
