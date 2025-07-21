@@ -4,11 +4,644 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EIH Junior Ice Hockey League</title>
-    ...
-    <!-- full code from user -->
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" crossorigin="anonymous" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            background: #f5f5f5;
+        }
+        
+        .sidebar {
+            width: 380px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+        }
+        
+        .header {
+            background: #003d7a; /* England Ice Hockey blue */
+            color: white;
+            padding: 20px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: "";
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .controls {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e74333; /* England Ice Hockey red accent */
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        .control-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        select, input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            background: white;
+        }
+        
+        select:disabled, input:disabled {
+            background: #f0f0f0;
+            cursor: not-allowed;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        button:disabled {
+            background: #e0e0e0;
+            color: #999;
+            cursor: not-allowed;
+        }
+        
+        .btn-primary {
+            background: #003d7a;
+            color: white;
+            border: 1px solid #003d7a;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: #002d5a;
+            border-color: #002d5a;
+        }
+        
+        .btn-secondary {
+            background: #e74333;
+            color: white;
+            border: 1px solid #e74333;
+        }
+        
+        .btn-secondary:hover {
+            background: #d63323;
+            border-color: #d63323;
+        }
+        
+        .btn-reset:hover {
+            background: #5a6268;
+        }
+        
+        .info-panel {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .info-content {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        
+        .info-content h3 {
+            color: #003d7a;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        
+        .info-content p {
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+        
+        .team-list {
+            display: grid;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        
+        .team-item {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #e0e0e0;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .team-item.clickable {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .team-item.clickable:hover {
+            background: #f0f0f0;
+            border-color: #003d7a;
+            transform: translateX(5px);
+        }
+        
+        .team-item.highlight-on-map {
+            background: #e8f1ff;
+            border-color: #003d7a;
+            border-width: 2px;
+        }
+        
+        .team-item .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        
+        .team-item .dot.north { background: #003d7a; }
+        .team-item .dot.south { background: #e74333; }
+        .team-item .dot.national { background: #FFD700; }
+        
+        .map-container {
+            flex: 1;
+            position: relative;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .map-error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .map-error h3 {
+            color: #e74c3c;
+            margin-bottom: 10px;
+        }
+        
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        
+        .legend h4 {
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+            font-size: 13px;
+        }
+        
+        .legend-item .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        
+        .custom-marker {
+            transition: transform 0.2s;
+        }
+        
+        .custom-marker:hover {
+            transform: scale(1.2);
+            z-index: 1000 !important;
+        }
+        
+        .leaflet-marker-icon {
+            cursor: pointer !important;
+        }
+        
+        .leaflet-tooltip {
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        
+        .stats {
+            background: #e8f1ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 13px;
+            color: #003d7a;
+            border: 1px solid #b3d1ff;
+        }
+    </style>
 </head>
 <body>
-    ...
-    <!-- full code from user -->
-</body>
-</html>
+    <div class="sidebar">
+        <div class="header">
+            <h1>🏒 EIH Junior Ice Hockey League</h1>
+            <p>2025/26 Season Schedule Explorer</p>
+            <p style="font-size: 11px; opacity: 0.7; margin-top: 5px; font-style: italic;">For reference only - Not for operational use - Unofficial</p>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="ageGroup">Age Group:</label>
+                <select id="ageGroup">
+                    <option value="">Select Age Group</option>
+                    <option value="U10">Under 10 (U10)</option>
+                    <option value="U12">Under 12 (U12)</option>
+                    <option value="U14">Under 14 (U14)</option>
+                    <option value="U16">Under 16 (U16)</option>
+                    <option value="U19">Under 19 (U19)</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="division">Division:</label>
+                <select id="division" disabled>
+                    <option value="">Select Age Group First</option>
+                </select>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <button class="btn-secondary" id="resetView" style="width: 100%; padding: 12px; background: #e74333; color: white; border: none; border-radius: 5px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                    🔄 Reset View / Show All Venues
+                </button>
+            </div>
+        </div>
+        
+        <div class="info-panel">
+            <div class="info-content">
+                <h3>Welcome to EIH Junior Ice Hockey League Explorer</h3>
+                <p>Showing all <strong>30 ice rink venues</strong> hosting <strong>191 teams</strong> across the UK.</p>
+                <p>Select an age group and division above to explore the league structure, or click on any venue marker to see details.</p>
+                <div class="stats">
+                    <strong>Unique Venues:</strong> 30<br>
+                    <strong>Total Teams:</strong> 191<br>
+                    <strong>Age Groups:</strong> 5 (U10 to U19)<br>
+                    <strong>Total Divisions:</strong> 25<br>
+                    <strong>Note:</strong> Venues may host multiple teams across different age groups
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="map-container">
+        <div id="map"></div>
+        <div class="legend">
+            <h4>Venue Locations</h4>
+            <div class="legend-item">
+                <div class="dot" style="background: #003d7a;"></div>
+                <span>North Venues</span>
+            </div>
+            <div class="legend-item">
+                <div class="dot" style="background: #e74333;"></div>
+                <span>South Venues</span>
+            </div>
+            <div class="legend-item">
+                <div class="dot" style="background: #FFD700;"></div>
+                <span>Hosts U19 National Division Team</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Leaflet JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" crossorigin="anonymous"></script>
+    
+    <script>
+        /**
+         * EIH Junior Ice Hockey League Interactive Map
+         * Author & Owner: Hubert Klupsch
+         * Based on official EIH Junior Leagues 2025-2026 v.5 material
+         * Created: 2025
+         * Version: 1.0
+         * 
+         * This application is for reference purposes only and is not official.
+         * All data is based on EIH Junior Leagues 2025-2026 v.5 documentation.
+         */
+        
+        // Complete data structure
+        const hockeyData = {
+            clubs: {
+                // Peterborough (Planet Ice Peterborough)
+                "Peterborough": { lat: 52.5755, lng: -0.2426, city: "Peterborough" },
+                "Peterborough 1": { lat: 52.5758, lng: -0.2422, city: "Peterborough" },
+                "Peterborough 2": { lat: 52.5757, lng: -0.2424, city: "Peterborough" },
+                
+                // Chelmsford (Riverside Leisure Centre)
+                "Chelmsford": { lat: 51.7355, lng: 0.4685, city: "Chelmsford" },
+                "Chelmsford 1": { lat: 51.7357, lng: 0.4687, city: "Chelmsford" },
+                "Chelmsford 2": { lat: 51.7353, lng: 0.4683, city: "Chelmsford" },
+                
+                // Cambridge (Cambridge Ice Arena)
+                "Cambridge": { lat: 52.2053, lng: 0.1218, city: "Cambridge" },
+                
+                // Milton Keynes (Planet Ice Milton Keynes)
+                "MK Storm": { lat: 52.0406, lng: -0.7594, city: "Milton Keynes" },
+                "MK Storm 1": { lat: 52.0408, lng: -0.7592, city: "Milton Keynes" },
+                "MK Storm 2": { lat: 52.0404, lng: -0.7596, city: "Milton Keynes" },
+                
+                // Romford (Sapphire Ice Rink)
+                "Romford": { lat: 51.5755, lng: 0.1821, city: "Romford" },
+                "Romford 1": { lat: 51.5757, lng: 0.1823, city: "Romford" },
+                "Romford 2": { lat: 51.5753, lng: 0.1819, city: "Romford" },
+                
+                // Haringey (Alexandra Palace)
+                "Haringey": { lat: 51.5947, lng: -0.1198, city: "London (Haringey)" },
+                "Haringey 1": { lat: 51.5949, lng: -0.1196, city: "London (Haringey)" },
+                "Haringey 2": { lat: 51.5945, lng: -0.1200, city: "London (Haringey)" },
+                
+                // Leeds (Planet Ice Leeds)
+                "Leeds": { lat: 53.7964, lng: -1.5478, city: "Leeds" },
+                "Leeds 1": { lat: 53.7966, lng: -1.5476, city: "Leeds" },
+                "Leeds 2": { lat: 53.7962, lng: -1.5480, city: "Leeds" },
+                "Leeds W": { lat: 53.7968, lng: -1.5474, city: "Leeds" },
+                "Leeds B": { lat: 53.7960, lng: -1.5482, city: "Leeds" },
+                
+                // Whitley Bay (Whitley Bay Ice Rink)
+                "Whitley Bay": { lat: 55.0386, lng: -1.4414, city: "Whitley Bay" },
+                "Whitley": { lat: 55.0388, lng: -1.4412, city: "Whitley Bay" },
+                
+                // Billingham (Billingham Forum)
+                "Billingham": { lat: 54.6058, lng: -1.2759, city: "Billingham" },
+                "Billingham 2": { lat: 54.6060, lng: -1.2757, city: "Billingham" },
+                
+                // Kingston (Kingston Ice Rink) - Hull area
+                "Kingston": { lat: 53.7676, lng: -0.3274, city: "Kingston upon Hull" },
+                
+                // Sheffield (iceSheffield)
+                "Sheffield": { lat: 53.3811, lng: -1.4701, city: "Sheffield" },
+                "Sheffield 1": { lat: 53.3813, lng: -1.4699, city: "Sheffield" },
+                "Sheffield 2": { lat: 53.3809, lng: -1.4703, city: "Sheffield" },
+                
+                // Solihull (Planet Ice Solihull)
+                "Solihull": { lat: 52.4118, lng: -1.7697, city: "Solihull" },
+                "Solihull 1": { lat: 52.4120, lng: -1.7695, city: "Solihull" },
+                "Solihull 2": { lat: 52.4116, lng: -1.7699, city: "Solihull" },
+                
+                // Telford (Telford Ice Rink)
+                "Telford": { lat: 52.6783, lng: -2.4447, city: "Telford" },
+                
+                // Coventry (Planet Ice Coventry)
+                "Coventry": { lat: 52.4068, lng: -1.5197, city: "Coventry" },
+                
+                // Manchester (Planet Ice Altrincham)
+                "Manchester": { lat: 53.3877, lng: -2.3527, city: "Manchester (Altrincham)" },
+                "Manchester 1": { lat: 53.3879, lng: -2.3525, city: "Manchester (Altrincham)" },
+                "Manchester 2": { lat: 53.3875, lng: -2.3529, city: "Manchester (Altrincham)" },
+                
+                // Lancashire (Blackburn Arena)
+                "Lancashire": { lat: 53.7480, lng: -2.4904, city: "Blackburn, Lancashire" },
+                
+                // Widnes (Widnes Ice Rink)
+                "Widnes": { lat: 53.3670, lng: -2.7280, city: "Widnes" },
+                "Widnes 1": { lat: 53.3672, lng: -2.7278, city: "Widnes" },
+                "Widnes 2": { lat: 53.3668, lng: -2.7282, city: "Widnes" },
+                
+                // Deeside (Deeside Leisure Centre)
+                "Deeside": { lat: 53.2167, lng: -3.0167, city: "Deeside" },
+                "Deeside 1": { lat: 53.2169, lng: -3.0165, city: "Deeside" },
+                "Deeside 2": { lat: 53.2165, lng: -3.0169, city: "Deeside" },
+                
+                // Nottingham (National Ice Centre)
+                "Nottingham": { lat: 52.9548, lng: -1.1581, city: "Nottingham" },
+                "Nottingham 1": { lat: 52.9550, lng: -1.1579, city: "Nottingham" },
+                "Nottingham 2": { lat: 52.9546, lng: -1.1583, city: "Nottingham" },
+                
+                // Bradford (Bradford Ice Arena)
+                "Bradford": { lat: 53.7960, lng: -1.7594, city: "Bradford" },
+                
+                // Bristol (Planet Ice Bristol - Cribbs Causeway)
+                "Bristol": { lat: 51.5282, lng: -2.6094, city: "Bristol" },
+                
+                // Swindon (Swindon Ice Rink)
+                "Swindon": { lat: 51.5558, lng: -1.7797, city: "Swindon" },
+                "Swindon 1": { lat: 51.5560, lng: -1.7795, city: "Swindon" },
+                "Swindon 2": { lat: 51.5556, lng: -1.7799, city: "Swindon" },
+                
+                // Cardiff (Ice Arena Wales)
+                "Cardiff": { lat: 51.4816, lng: -3.1791, city: "Cardiff" },
+                "Cardiff 1": { lat: 51.4818, lng: -3.1789, city: "Cardiff" },
+                "Cardiff 2": { lat: 51.4814, lng: -3.1793, city: "Cardiff" },
+                
+                // Oxford (Oxford Ice Rink)
+                "Oxford": { lat: 51.7520, lng: -1.2577, city: "Oxford" },
+                
+                // Slough (Slough Ice Arena)
+                "Slough": { lat: 51.5074, lng: -0.5950, city: "Slough" },
+                "Slough 1": { lat: 51.5076, lng: -0.5948, city: "Slough" },
+                "Slough 2": { lat: 51.5072, lng: -0.5952, city: "Slough" },
+                
+                // Invicta (Gillingham Ice Bowl)
+                "Invicta": { lat: 51.3881, lng: 0.5477, city: "Gillingham (Kent)" },
+                "Invicta 1": { lat: 51.3883, lng: 0.5479, city: "Gillingham (Kent)" },
+                "Invicta 2": { lat: 51.3879, lng: 0.5475, city: "Gillingham (Kent)" },
+                
+                // Streatham (Streatham Ice Arena)
+                "Streatham": { lat: 51.4321, lng: -0.1215, city: "London (Streatham)" },
+                "Streatham 2": { lat: 51.4319, lng: -0.1217, city: "London (Streatham)" },
+                
+                // Guildford (Guildford Spectrum)
+                "Guildford": { lat: 51.2362, lng: -0.5704, city: "Guildford" },
+                
+                // Solent (Southampton) - Assuming Gosport Ice Rink
+                "Solent": { lat: 50.7947, lng: -1.1287, city: "Gosport/Southampton" },
+                
+                // Sutton (Sutton Ice Rink)
+                "Sutton": { lat: 51.3656, lng: -0.1942, city: "Sutton" }
+            },
+            
+            divisions: {
+                "U10": {
+                    "U10 South (East)": {
+                        teams: ["Peterborough", "Chelmsford", "Cambridge", "MK Storm", "Romford 2", "Haringey 2"],
+                        type: "south"
+                    },
+                    "U10 North (North East)": {
+                        teams: ["Whitley Bay", "Leeds", "Billingham", "Kingston"],
+                        type: "north"
+                    },
+                    "U10 North (South)": {
+                        teams: ["Sheffield 2", "Solihull", "Telford", "Coventry"],
+                        type: "north"
+                    },
+                    "U10 North (North West)": {
+                        teams: ["Manchester", "Lancashire", "Widnes", "Deeside"],
+                        type: "north"
+                    },
+                    "U10 North (Central)": {
+                        teams: ["Manchester 2", "Nottingham", "Sheffield", "Bradford"],
+                        type: "north"
+                    },
+                    "U10 South (West)": {
+                        teams: ["Bristol", "Swindon", "Cardiff", "Oxford", "Slough 2"],
+                        type: "south"
+                    },
+                    "U10 South (London East)": {
+                        teams: ["Peterborough 2", "Romford", "Haringey", "Invicta", "Chelmsford 2", "Streatham 2"],
+                        type: "south"
+                    },
+                    "U10 South (Central South)": {
+                        teams: ["Slough", "Guildford", "Streatham", "Solent"],
+                        type: "south"
+                    }
+                },
+                "U12": {
+                    "U12N1": {
+                        teams: ["Billingham", "Bradford", "Kingston", "Leeds W", "Leeds B", "Manchester", "Nottingham 1", "Sheffield 1", "Solihull", "Widnes"],
+                        type: "north",
+                        games: "18 games (1 home/1 away)"
+                    },
+                    "U12N2": {
+                        teams: ["Billingham 2", "Lancashire", "Coventry", "Deeside", "Nottingham 2", "Sheffield 2", "Solihull 2", "Telford", "Whitley Bay"],
+                        type: "north",
+                        games: "16 games (1 home/1 away)"
+                    },
+                    "U12S1": {
+                        teams: ["Cardiff 1", "Chelmsford 1", "Guildford", "Haringey", "Invicta", "Peterborough", "Slough 1", "Streatham", "Swindon"],
+                        type: "south",
+                        games: "16 games (1 home/1 away)"
+                    },
+                    "U12S2": {
+                        teams: ["Bristol", "Cambridge", "Cardiff 2", "Chelmsford 2", "MK Storm", "Oxford", "Romford", "Solent"],
+                        type: "south",
+                        games: "14 games (1 home/1 away)"
+                    }
+                },
+                "U14": {
+                    "U14N1": {
+                        teams: ["Bradford", "Deeside 1", "Kingston", "Leeds 1", "Manchester 1", "Nottingham 1", "Sheffield 1", "Solihull 1", "Whitley", "Widnes 1"],
+                        type: "north",
+                        games: "18 games (1 home/1 away)"
+                    },
+                    "U14N2 (East)": {
+                        teams: ["Billingham", "Coventry", "Leeds 2", "Nottingham 2", "Sheffield 2", "Sutton"],
+                        type: "north",
+                        games: "20 games (2 home/2 away)"
+                    },
+                    "U14N2 (West)": {
+                        teams: ["Lancashire", "Deeside 2", "Manchester 2", "Solihull 2", "Telford", "Widnes 2"],
+                        type: "north",
+                        games: "20 games (2 home/2 away)"
+                    },
+                    "U14S1": {
+                        teams: ["Cardiff", "Chelmsford", "Guildford", "Haringey 1", "Invicta 1", "Peterborough 1", "Slough 1", "Streatham", "Swindon 1"],
+                        type: "south",
+                        games: "16 games (1 home/1 away)"
+                    },
+                    "U14S2": {
+                        teams: ["Cambridge", "Haringey 2", "Invicta 2", "MK Storm", "Peterborough 2", "Romford", "Bristol", "Oxford", "Slough 2", "Solent", "Swindon 2"],
+                        type: "south",
+                        games: "20 games (1 home/1 away)"
+                    }
+                },
+                "U16": {
+                    "U16N1": {
+                        teams: ["Billingham", "Bradford", "Deeside", "Kingston", "Leeds 1", "Manchester", "Nottingham 1", "Sheffield 1", "Solihull 1", "Whitley Bay"],
+                        type: "north",
+                        games: "18 games (1 home/1 away)"
+                    },
+                    "U16N2": {
+                        teams: ["Lancashire", "Coventry", "Leeds 2", "Nottingham 2", "Sheffield 2", "Solihull 2", "Sutton", "Telford", "Widnes"],
+                        type: "north",
+                        games: "16 games (1 home/1 away)"
+                    },
+                    "U16S1": {
+                        teams: ["Cardiff", "Chelmsford", "Guildford", "Haringey 1", "Invicta 1", "MK Storm 1", "Streatham", "Peterborough", "Romford 1", "Slough", "Swindon 1"],
+                        type: "south",
+                        games: "20 games (1 home/1 away)"
+                    },
+                    "U16S2": {
+                        teams: ["Bristol", "Cambridge", "Haringey 2", "Invicta 2", "MK Storm 2", "Oxford", "Romford 2", "Solent", "Swindon 2"],
+                        type: "south",
+                        games: "16 games (1 home/1 away)"
+                    }
+                },
+                "U19": {
+                    "U19 National": {
+                        teams: ["Nottingham", "Leeds", "Sheffield", "Telford", "Peterborough", "Haringey 1", "Swindon 1", "Slough 1", "Chelmsford", "Guildford"],
+                        type: "national",
+                        games: "18 games (1 home/1 away) + Playoffs",
+                        note: "Top 8 advance to playoffs: QF (1v8, 2v7, 3v6, 4v5), SF, Final"
+                    },
+                    "U19N1": {
+                        teams
